@@ -1,0 +1,26 @@
+{
+  "name": "@idtra/web-sdk",
+  "version": "1.0.0",
+  "description": "Official Idtra Biometric Face Verification and Active Liveness Web SDK for JavaScript & TypeScript",
+  "main": "dist/idtra-kyc.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "idtra",
+    "kyc",
+    "biometrics",
+    "face-match",
+    "liveness-detection",
+    "nin-verify",
+    "bvn-verify",
+    "identity-verification"
+  ],
+  "author": "Idtra Technologies Ltd <support@idtra.com>",
+  "license": "MIT",
+  "homepage": "https://idtra.com/docs#biometrics",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/idtra/idtra-web-sdk.git"
+  }
+}
