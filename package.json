@@ -1,6 +1,6 @@
 {
   "name": "@idtra/web-sdk",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Official Idtra Biometric Face Verification and Active Liveness Web SDK for JavaScript & TypeScript",
   "main": "dist/idtra-kyc.js",
   "scripts": {

@@ -1,13 +1,22 @@
 /**
  * Idtra Biometric KYC & Active Liveness SDK
- * Version: 1.0.0
+ * Version: 2.0.0
  * (c) Idtra Technologies - https://idtra.com
+ *
+ * Recommended (v2): your SERVER creates a session with your secret key
+ *   POST https://idtra.com/api/biometrics/session/create  { number, service_type, redirect_url?, webhook_url?, reference? }
+ * and gives the browser only the returned verification_url. Then:
+ *   IdtraKYC.start({ verificationUrl, onComplete, onError, onClose })
+ * The hosted page runs the live check (blink + head turn) and the face match. onComplete receives the state only;
+ * fetch the full result on your server (GET /api/biometrics/session/{id}/result with your key) or use the webhook.
+ *
+ * Deprecated (v1): start({ nin|bvn, apiKey }) puts your secret key in the browser where anyone can read it.
  */
 (function (window, document) {
     'use strict';
 
     var IdtraKYC = {
-        version: '1.0.0',
+        version: '2.0.0',
         activeStream: null,
         modalEl: null,
         animationFrameId: null,
@@ -26,6 +35,13 @@
         start: function (options) {
             var self = this;
             options = options || {};
+            if (options.verificationUrl || options.sessionId) {
+                return self.startSession(options);
+            }
+            if (options.apiKey) {
+                console.warn('[IdtraKYC] Passing apiKey to the browser exposes your secret key and is deprecated. ' +
+                    'Create a session on your server and call IdtraKYC.start({ verificationUrl }). See https://idtra.com/docs#biometrics');
+            }
 
             if (!options.nin && !options.bvn && !options.onCapture) {
                 console.warn('[IdtraKYC] Neither NIN, BVN nor custom onCapture callback was provided.');
@@ -34,6 +50,61 @@
             self.injectStyles();
             self.createModal(options);
             self.initCamera();
+        },
+
+        /**
+         * v2: open the hosted verification page (created by your server) and report the outcome.
+         * options: verificationUrl (or sessionId + baseUrl), mode: 'modal' (default) | 'redirect',
+         *          onComplete(state), onError(err), onClose()
+         * state = { session_id, status: 'completed'|'failed'|'expired', is_match, confidence, match_message, redirect_url }
+         */
+        startSession: function (options) {
+            var self = this;
+            var url = options.verificationUrl ||
+                ((options.baseUrl || 'https://idtra.com').replace(/\/$/, '') + '/verify/s/' + options.sessionId);
+            var m = /\/verify\/s\/([A-Za-z0-9_]+)/.exec(url);
+            if (!m) {
+                if (options.onError) options.onError(new Error('Invalid verificationUrl'));
+                return;
+            }
+            var sessionId = m[1];
+            var base = url.slice(0, url.indexOf('/verify/s/'));
+            if (options.mode === 'redirect') {
+                window.location.href = url;
+                return;
+            }
+            self.injectStyles();
+            var overlay = document.createElement('div');
+            overlay.className = 'idtra-kyc-overlay';
+            overlay.innerHTML = '<div style="position:relative;width:100%;max-width:420px;height:min(760px,92vh);border-radius:20px;overflow:hidden;background:#090d16;box-shadow:0 20px 60px rgba(0,0,0,.6)">' +
+                '<button type="button" aria-label="Close" style="position:absolute;top:10px;right:12px;z-index:2;background:rgba(255,255,255,.12);color:#fff;border:0;border-radius:50%;width:32px;height:32px;font-size:18px;cursor:pointer">&times;</button>' +
+                '<iframe allow="camera; autoplay" style="width:100%;height:100%;border:0" title="Idtra verification"></iframe></div>';
+            overlay.querySelector('iframe').src = url;
+            document.body.appendChild(overlay);
+            requestAnimationFrame(function () { overlay.classList.add('idtra-show'); });
+            self.modalEl = overlay;
+
+            var finished = false;
+            var finish = function (cb, arg) {
+                if (finished) return;
+                finished = true;
+                clearInterval(timer);
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                self.modalEl = null;
+                if (cb) cb(arg);
+            };
+            overlay.querySelector('button').addEventListener('click', function () { finish(options.onClose); });
+            var timer = setInterval(function () {
+                fetch(base + '/api/biometrics/session/' + sessionId + '/status', { headers: { 'Accept': 'application/json' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (st) {
+                        if (st.status === 'completed' || st.status === 'failed' || st.status === 'expired') {
+                            st.session_id = sessionId;
+                            setTimeout(function () { finish(options.onComplete, st); }, 1500);   // let the user see the result
+                        }
+                    })
+                    .catch(function () { /* keep polling */ });
+            }, 2000);
         },
 
         injectStyles: function () {
